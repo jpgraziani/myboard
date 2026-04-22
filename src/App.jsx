@@ -253,13 +253,12 @@ export default function App() {
   const [loading, setLoading]     = useState(true)
   const [saving, setSaving]       = useState(false)
 
-if (!unlocked) return <PinScreen onUnlock={() => setUnlocked(true)} />
-
-if (loading) return (
-    <div style={{ minHeight: '100vh', background: '#080B10', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11, letterSpacing: 3, fontFamily: 'IBM Plex Mono, monospace' }}>LOADING...</div>
-    </div>
-  )
+  useEffect(() => {
+    loadFromSupabase().then(data => {
+      if (data) setLists(data)
+      setLoading(false)
+    }).catch(() => setLoading(false))
+  }, [])
 
   useEffect(() => {
     if (loading) return
@@ -277,6 +276,8 @@ if (loading) return (
 
   const totalPending = lists.reduce((a, l) => a + l.cards.filter(c => !c.done).length, 0)
   const totalHigh    = lists.reduce((a, l) => a + l.cards.filter(c => !c.done && c.priority === 'high').length, 0)
+
+  if (!unlocked) return <PinScreen onUnlock={() => setUnlocked(true)} />
 
   if (loading) return (
     <div style={{ minHeight: '100vh', background: '#080B10', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
