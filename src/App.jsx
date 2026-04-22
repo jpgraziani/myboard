@@ -29,7 +29,7 @@ async function saveToSupabase(lists) {
   await supabase.from('boards').upsert({ id: 'default', data: lists }, { onConflict: 'id' })
 }
 
-const CORRECT_PIN = '1234'
+const CORRECT_PIN = import.meta.env.VITE_PIN
 
 function PinScreen({ onUnlock }) {
   const [pin, setPin]     = useState('')
