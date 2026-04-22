@@ -21,13 +21,13 @@ jobs:
           node-version: 20
 
       - name: Install dependencies
-        run: npm ci --legacy-peer-deps
+        run: npm install --legacy-peer-deps
 
       - name: Build
         run: npm run build
-env:
-  VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-  VITE_SUPABASE_ANON: ${{ secrets.VITE_SUPABASE_ANON }}
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON: ${{ secrets.VITE_SUPABASE_ANON }}
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
