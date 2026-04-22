@@ -253,12 +253,13 @@ export default function App() {
   const [loading, setLoading]     = useState(true)
   const [saving, setSaving]       = useState(false)
 
-  if (!unlocked) return <PinScreen onUnlock={() => setUnlocked(true)} />
+if (!unlocked) return <PinScreen onUnlock={() => setUnlocked(true)} />
 
-  // Load from Supabase on mount
-  useEffect(() => {
-    loadFromSupabase().then(data => { if (data) setLists(data); setLoading(false) }).catch(() => setLoading(false))
-  }, [])
+if (loading) return (
+    <div style={{ minHeight: '100vh', background: '#080B10', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11, letterSpacing: 3, fontFamily: 'IBM Plex Mono, monospace' }}>LOADING...</div>
+    </div>
+  )
 
   useEffect(() => {
     if (loading) return
