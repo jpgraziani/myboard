@@ -150,19 +150,20 @@ function ListForm({ initial, submitLabel, onSubmit, onDelete, onClearAll }) {
   )
 }
 
-// ─── Swipeable Card ───────────────────────────────────────────────────────────
-function SwipeCard({ card, listColor, pri, onToggle, onEdit, onDelete, onDragStart, onDragOver, onDrop, isDragging }) {
+// ─── Swipeable Card (swipe left OR right to delete) ──────────────────────────
+function SwipeCard({ card, listColor, pri, onToggle, onEdit, onDelete, isDragging }) {
   const [swipeX, setSwipeX] = useState(0)
-  const [swiping, setSwiping] = useState(false)
+  const [isSwiping, setIsSwiping] = useState(false)
   const startX = useRef(0)
   const startY = useRef(0)
   const isScrolling = useRef(null)
+  const THRESHOLD = 80
 
   function onTouchStart(e) {
     startX.current = e.touches[0].clientX
     startY.current = e.touches[0].clientY
     isScrolling.current = null
-    setSwiping(true)
+    setIsSwiping(true)
   }
 
   function onTouchMove(e) {
@@ -171,26 +172,51 @@ function SwipeCard({ card, listColor, pri, onToggle, onEdit, onDelete, onDragSta
     if (isScrolling.current === null) {
       isScrolling.current = Math.abs(dy) > Math.abs(dx)
     }
-    if (isScrolling.current) { setSwiping(false); setSwipeX(0); return }
-    if (dx > 0) setSwipeX(Math.min(dx, 90))
+    if (isScrolling.current) { setIsSwiping(false); setSwipeX(0); return }
+    // Allow both directions, cap at ±THRESHOLD
+    const capped = Math.max(-THRESHOLD, Math.min(THRESHOLD, dx))
+    setSwipeX(capped)
   }
 
   function onTouchEnd() {
-    setSwiping(false)
-    if (swipeX > 60) { onDelete() }
-    else { setSwipeX(0) }
+    setIsSwiping(false)
+    if (Math.abs(swipeX) > THRESHOLD * 0.7) {
+      onDelete()
+    } else {
+      setSwipeX(0)
+    }
   }
 
+  const absSwipe = Math.abs(swipeX)
+  const swipeProgress = absSwipe / THRESHOLD
+  const showDelete = absSwipe > 15
+  const isLeft = swipeX < 0
+
   return (
-    <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 9 }}>
-      <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,77,109,0.15)', borderRadius: 9, display: 'flex', alignItems: 'center', paddingLeft: 16 }}>
-        <span style={{ fontSize: 11, color: '#FF4D6D', fontWeight: 700, letterSpacing: 1.5 }}>DELETE</span>
+    <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 9, opacity: isDragging ? 0.4 : 1 }}>
+      {/* Left delete hint (swipe right reveals) */}
+      <div style={{
+        position: 'absolute', top: 0, left: 0, bottom: 0, width: '100%',
+        background: `rgba(255,77,109,${showDelete && !isLeft ? swipeProgress * 0.25 : 0})`,
+        display: 'flex', alignItems: 'center', paddingLeft: 16,
+        transition: isSwiping ? 'none' : 'background 0.2s',
+        borderRadius: 9,
+      }}>
+        <span style={{ fontSize: 11, color: '#FF4D6D', fontWeight: 700, letterSpacing: 1.5, opacity: showDelete && !isLeft ? swipeProgress : 0, transition: isSwiping ? 'none' : 'opacity 0.2s' }}>⟵ DELETE</span>
       </div>
+      {/* Right delete hint (swipe left reveals) */}
+      <div style={{
+        position: 'absolute', top: 0, right: 0, bottom: 0, width: '100%',
+        background: `rgba(255,77,109,${showDelete && isLeft ? swipeProgress * 0.25 : 0})`,
+        display: 'flex', alignItems: 'center', justifyContent: 'flex-end', paddingRight: 16,
+        transition: isSwiping ? 'none' : 'background 0.2s',
+        borderRadius: 9,
+      }}>
+        <span style={{ fontSize: 11, color: '#FF4D6D', fontWeight: 700, letterSpacing: 1.5, opacity: showDelete && isLeft ? swipeProgress : 0, transition: isSwiping ? 'none' : 'opacity 0.2s' }}>DELETE ⟶</span>
+      </div>
+
+      {/* Card */}
       <div
-        draggable
-        onDragStart={onDragStart}
-        onDragOver={onDragOver}
-        onDrop={onDrop}
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
@@ -201,12 +227,10 @@ function SwipeCard({ card, listColor, pri, onToggle, onEdit, onDelete, onDragSta
           border: `1px solid ${card.done ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.07)'}`,
           borderLeft: `2px solid ${card.done ? 'rgba(255,255,255,0.06)' : pri.color}`,
           borderRadius: 9,
-          transition: swiping ? 'none' : 'transform 0.2s ease',
+          transition: isSwiping ? 'none' : 'transform 0.25s cubic-bezier(0.25,1,0.5,1)',
           transform: `translateX(${swipeX}px)`,
-          opacity: isDragging ? 0.4 : 1,
-          cursor: 'grab',
-          position: 'relative',
-          zIndex: 1,
+          position: 'relative', zIndex: 1,
+          userSelect: 'none',
         }}
       >
         <div onClick={onToggle} style={{ width: 20, height: 20, borderRadius: 6, flexShrink: 0, cursor: 'pointer', background: card.done ? `${listColor}30` : 'transparent', border: `1.5px solid ${card.done ? listColor : 'rgba(255,255,255,0.2)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -333,9 +357,15 @@ export default function App() {
   const [tab, setTab]             = useState('board')
   const [loading, setLoading]     = useState(true)
   const [saving, setSaving]       = useState(false)
-  const [dragCard, setDragCard]   = useState(null)
-  const [dragList, setDragList]   = useState(null)
   const boardRef = useRef(null)
+
+  // Touch drag state stored in refs to avoid re-renders during drag
+  const dragState = useRef(null)
+  const [draggingCardId, setDraggingCardId] = useState(null)
+  const [draggingListId, setDraggingListId] = useState(null)
+  const cardRefs = useRef({})  // cardId -> DOM ref
+  const listRefs = useRef({})  // listId -> DOM ref
+  const ghostRef = useRef(null)
 
   useEffect(() => {
     loadFromSupabase().then(data => {
@@ -374,49 +404,103 @@ export default function App() {
     setLists(ls => ls.map(l => l.id !== listId ? l : { ...l, cards: [] }))
   }
 
-  // Card drag/drop reorder
-  function onCardDragStart(cardId, listId, index) {
-    setDragCard({ cardId, listId, index })
+  // ── Touch drag for CARDS ──────────────────────────────────────────────────
+  function onCardLongPress(cardId, listId) {
+    dragState.current = { type: 'card', cardId, listId }
+    setDraggingCardId(cardId)
+    if (navigator.vibrate) navigator.vibrate(40)
   }
-  function onCardDragOver(e, listId, index) {
-    e.preventDefault()
-    if (!dragCard || (dragCard.listId === listId && dragCard.index === index)) return
-    setLists(ls => {
-      const sourceList = ls.find(l => l.id === dragCard.listId)
-      const card = sourceList?.cards.find(c => c.id === dragCard.cardId)
-      if (!card) return ls
-      let updated = ls.map(l => l.id !== dragCard.listId ? l : { ...l, cards: l.cards.filter(c => c.id !== dragCard.cardId) })
-      updated = updated.map(l => {
-        if (l.id !== listId) return l
-        const cards = [...l.cards]
-        cards.splice(index, 0, card)
-        return { ...l, cards }
-      })
-      return updated
-    })
-    setDragCard(d => d ? { ...d, listId, index } : d)
-  }
-  function onCardDrop() { setDragCard(null) }
 
-  // List drag/drop reorder
-  function onListDragStart(e, listId) {
-    setDragList(listId)
-    e.dataTransfer.effectAllowed = 'move'
-  }
-  function onListDragOver(e, listId) {
+  function onCardTouchMove(e, cardId, listId) {
+    if (!dragState.current || dragState.current.type !== 'card') return
     e.preventDefault()
-    if (!dragList || dragList === listId) return
-    setLists(ls => {
-      const fromIdx = ls.findIndex(l => l.id === dragList)
-      const toIdx   = ls.findIndex(l => l.id === listId)
-      if (fromIdx === -1 || toIdx === -1) return ls
-      const updated = [...ls]
-      const [moved] = updated.splice(fromIdx, 1)
-      updated.splice(toIdx, 0, moved)
-      return updated
-    })
+    const touch = e.touches[0]
+
+    // Find which card we're hovering over
+    for (const [id, el] of Object.entries(cardRefs.current)) {
+      if (!el || id === cardId) continue
+      const rect = el.getBoundingClientRect()
+      if (touch.clientY >= rect.top && touch.clientY <= rect.bottom) {
+        // Find which list this card belongs to
+        const targetList = lists.find(l => l.cards.some(c => c.id === id))
+        if (!targetList) continue
+        const fromListId = dragState.current.listId
+        const fromCardId = dragState.current.cardId
+        setLists(ls => {
+          const sourceList = ls.find(l => l.id === fromListId)
+          const card = sourceList?.cards.find(c => c.id === fromCardId)
+          if (!card) return ls
+          const toIdx = targetList.cards.findIndex(c => c.id === id)
+          let updated = ls.map(l => l.id !== fromListId ? l : { ...l, cards: l.cards.filter(c => c.id !== fromCardId) })
+          updated = updated.map(l => {
+            if (l.id !== targetList.id) return l
+            const cards = l.cards.filter(c => c.id !== fromCardId)
+            const insertAt = cards.findIndex(c => c.id === id)
+            const newCards = [...cards]
+            newCards.splice(insertAt >= 0 ? insertAt : cards.length, 0, card)
+            return { ...l, cards: newCards }
+          })
+          return updated
+        })
+        dragState.current.listId = targetList.id
+        break
+      }
+    }
   }
-  function onListDrop() { setDragList(null) }
+
+  function onCardTouchEnd() {
+    dragState.current = null
+    setDraggingCardId(null)
+  }
+
+  // ── Touch drag for LISTS ──────────────────────────────────────────────────
+  function onListLongPress(listId) {
+    dragState.current = { type: 'list', listId }
+    setDraggingListId(listId)
+    if (navigator.vibrate) navigator.vibrate(40)
+  }
+
+  function onListTouchMove(e, listId) {
+    if (!dragState.current || dragState.current.type !== 'list') return
+    e.preventDefault()
+    const touch = e.touches[0]
+    for (const [id, el] of Object.entries(listRefs.current)) {
+      if (!el || id === listId) continue
+      const rect = el.getBoundingClientRect()
+      if (touch.clientY >= rect.top && touch.clientY <= rect.bottom) {
+        setLists(ls => {
+          const fromIdx = ls.findIndex(l => l.id === listId)
+          const toIdx   = ls.findIndex(l => l.id === id)
+          if (fromIdx === -1 || toIdx === -1) return ls
+          const updated = [...ls]
+          const [moved] = updated.splice(fromIdx, 1)
+          updated.splice(toIdx, 0, moved)
+          return updated
+        })
+        break
+      }
+    }
+  }
+
+  function onListTouchEnd() {
+    dragState.current = null
+    setDraggingListId(null)
+  }
+
+  // Long press hook
+  function useLongPress(callback, ms = 500) {
+    const timerRef = useRef(null)
+    const fired = useRef(false)
+    function start(e) {
+      fired.current = false
+      timerRef.current = setTimeout(() => {
+        fired.current = true
+        callback()
+      }, ms)
+    }
+    function cancel() { clearTimeout(timerRef.current) }
+    return { onTouchStart: start, onTouchEnd: cancel, onTouchMove: cancel }
+  }
 
   const totalPending = lists.reduce((a, l) => a + l.cards.filter(c => !c.done).length, 0)
   const totalHigh    = lists.reduce((a, l) => a + l.cards.filter(c => !c.done && c.priority === 'high').length, 0)
@@ -437,6 +521,7 @@ export default function App() {
         html, body, #root { background:#080B10; min-height:100vh; }
         ::-webkit-scrollbar { display: none; }
         @keyframes fadeIn { from { opacity:0; transform:translateY(8px) } to { opacity:1; transform:translateY(0) } }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.6} }
       `}</style>
 
       {/* Header */}
@@ -473,28 +558,41 @@ export default function App() {
             const pending = list.cards.filter(c => !c.done).length
             const isCol = collapsed[list.id]
             const toggleCol = () => setCollapsed(c => ({ ...c, [list.id]: !c[list.id] }))
+            const isDraggingThis = draggingListId === list.id
+
             return (
               <div
                 key={list.id}
-                draggable
-                onDragStart={e => onListDragStart(e, list.id)}
-                onDragOver={e => onListDragOver(e, list.id)}
-                onDrop={onListDrop}
-                style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, overflow: 'hidden', animation: `fadeIn 0.3s ease ${li * 0.06}s both`, opacity: dragList === list.id ? 0.5 : 1, transition: 'opacity 0.15s' }}
+                ref={el => listRefs.current[list.id] = el}
+                onTouchMove={e => onListTouchMove(e, list.id)}
+                onTouchEnd={onListTouchEnd}
+                style={{
+                  background: 'rgba(255,255,255,0.025)',
+                  border: `1px solid ${isDraggingThis ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.07)'}`,
+                  borderRadius: 14, overflow: 'hidden',
+                  animation: `fadeIn 0.3s ease ${li * 0.06}s both`,
+                  opacity: isDraggingThis ? 0.7 : 1,
+                  transform: isDraggingThis ? 'scale(1.02)' : 'scale(1)',
+                  transition: 'opacity 0.15s, transform 0.15s, border 0.15s',
+                  boxShadow: isDraggingThis ? '0 8px 30px rgba(0,0,0,0.4)' : 'none',
+                }}
               >
                 {/* List header */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 14px', borderBottom: isCol ? 'none' : '1px solid rgba(255,255,255,0.05)' }}>
-                  <div style={{ width: 38, height: 38, borderRadius: 10, flexShrink: 0, background: `${list.color}18`, border: `1px solid ${list.color}44`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 17, color: list.color }}>{list.icon}</div>
+                  {/* Drag handle — long press to reorder lists */}
+                  <div
+                    onTouchStart={() => onListLongPress(list.id)}
+                    onTouchEnd={onListTouchEnd}
+                    style={{ width: 38, height: 38, borderRadius: 10, flexShrink: 0, background: isDraggingThis ? `${list.color}30` : `${list.color}18`, border: `1px solid ${list.color}44`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 17, color: list.color, cursor: 'grab', animation: isDraggingThis ? 'pulse 0.8s infinite' : 'none' }}
+                    title="Hold to reorder"
+                  >{list.icon}</div>
 
-                  {/* Tap center to collapse */}
                   <div onClick={toggleCol} style={{ flex: 1, cursor: 'pointer' }}>
                     <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: 0.2 }}>{list.title}</div>
                     <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)', marginTop: 2, letterSpacing: 0.5 }}>{pending} pending · tap to {isCol ? 'open' : 'close'}</div>
                   </div>
 
                   <div style={{ width: 24, height: 24, borderRadius: '50%', background: `${list.color}20`, border: `1px solid ${list.color}44`, color: list.color, fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{pending}</div>
-
-                  {/* Edit button on far right */}
                   <button onClick={() => setModal({ type: 'editList', list })} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6, width: 28, height: 28, color: 'rgba(255,255,255,0.35)', fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'inherit' }}>✎</button>
                 </div>
 
@@ -504,20 +602,37 @@ export default function App() {
                     {list.cards.length === 0 && <div style={{ textAlign: 'center', padding: '18px 0', color: 'rgba(255,255,255,0.12)', fontSize: 11, letterSpacing: 2 }}>NO ITEMS</div>}
                     {list.cards.map((card, ci) => {
                       const pri = PRIORITY_CONFIG[card.priority] || PRIORITY_CONFIG.medium
+                      const isDraggingCard = draggingCardId === card.id
                       return (
-                        <SwipeCard
+                        <div
                           key={card.id}
-                          card={card}
-                          listColor={list.color}
-                          pri={pri}
-                          onToggle={() => updateCard(list.id, card.id, { done: !card.done })}
-                          onEdit={() => setModal({ type: 'editCard', listId: list.id, card })}
-                          onDelete={() => removeCard(list.id, card.id)}
-                          onDragStart={() => onCardDragStart(card.id, list.id, ci)}
-                          onDragOver={e => onCardDragOver(e, list.id, ci)}
-                          onDrop={onCardDrop}
-                          isDragging={dragCard?.cardId === card.id}
-                        />
+                          ref={el => cardRefs.current[card.id] = el}
+                          onTouchMove={e => onCardTouchMove(e, card.id, list.id)}
+                          onTouchEnd={onCardTouchEnd}
+                          style={{ position: 'relative' }}
+                        >
+                          {/* Long-press drag handle strip on left */}
+                          <div
+                            onTouchStart={() => onCardLongPress(card.id, list.id)}
+                            onTouchEnd={onCardTouchEnd}
+                            style={{
+                              position: 'absolute', left: 0, top: 0, bottom: 0, width: 8,
+                              zIndex: 2, cursor: 'grab',
+                              borderRadius: '9px 0 0 9px',
+                              background: isDraggingCard ? `${list.color}60` : 'transparent',
+                              transition: 'background 0.2s',
+                            }}
+                          />
+                          <SwipeCard
+                            card={card}
+                            listColor={list.color}
+                            pri={pri}
+                            onToggle={() => updateCard(list.id, card.id, { done: !card.done })}
+                            onEdit={() => setModal({ type: 'editCard', listId: list.id, card })}
+                            onDelete={() => removeCard(list.id, card.id)}
+                            isDragging={isDraggingCard}
+                          />
+                        </div>
                       )
                     })}
                     <button onClick={() => setModal({ type: 'addCard', list })} style={{ marginTop: 4, padding: '10px 0', background: 'transparent', border: `1px dashed ${list.color}30`, borderRadius: 9, color: `${list.color}70`, fontSize: 11, fontWeight: 700, letterSpacing: 2, cursor: 'pointer', fontFamily: 'inherit' }}>+ ADD ITEM</button>
@@ -526,6 +641,11 @@ export default function App() {
               </div>
             )
           })}
+
+          {/* Hint */}
+          <div style={{ textAlign: 'center', padding: '8px 0 0', fontSize: 10, color: 'rgba(255,255,255,0.1)', letterSpacing: 1.5 }}>
+            HOLD ICON TO REORDER · SWIPE CARD TO DELETE
+          </div>
         </div>
       )}
 
